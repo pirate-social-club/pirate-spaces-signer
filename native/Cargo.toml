@@ -1,0 +1,16 @@
+[package]
+name = "spaces-verifier-native"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+base64 = "0.22.1"
+hex = "0.4.3"
+serde_json = "1.0.145"
+spaces_wallet = { git = "https://github.com/spacesprotocol/spaces", rev = "9eb78628318ac1892a82c6275108e7de0cdc7403", package = "spaces_wallet" }
+spaces_protocol = { git = "https://github.com/spacesprotocol/spaces", rev = "9eb78628318ac1892a82c6275108e7de0cdc7403", package = "spaces_protocol", default-features = false, features = ["std"] }
+spaces_veritas = { git = "https://github.com/spacesprotocol/spaces", rev = "9eb78628318ac1892a82c6275108e7de0cdc7403", package = "spaces_veritas", default-features = false, features = ["std"] }
+
+[patch."https://github.com/spacesprotocol/spacedb"]
+spacedb = { path = "../vendor/spacedb" }

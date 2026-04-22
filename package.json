@@ -1,0 +1,8 @@
+{
+  "name": "pirate-spaces-signer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sign-digest": "bun scripts/sign-digest.ts"
+  }
+}

@@ -1,0 +1,4 @@
+node_modules/
+native/target/
+.env
+.env.*

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { rpc } from "../src/json-rpc";
 import {
@@ -146,7 +146,14 @@ function normalizeDigest(value: string): string {
 
 function resolveWalletDir(options: Options): string {
   if (options.walletDir) {
-    return options.walletDir;
+    const explicitWalletPath = path.resolve(options.walletDir);
+    if (existsSync(explicitWalletPath) && statSync(explicitWalletPath).isFile()) {
+      if (path.basename(explicitWalletPath) !== "wallet.json") {
+        throw new Error("--wallet-dir must point to a Spaces wallet directory or wallet.json");
+      }
+      return path.dirname(explicitWalletPath);
+    }
+    return explicitWalletPath;
   }
   if (!options.spacesDataDir) {
     throw new Error("missing wallet location: set --wallet-dir or --spaces-data-dir");
@@ -162,6 +169,34 @@ function resolveWalletDir(options: Options): string {
   }
 
   return directWalletDir;
+}
+
+function validateWalletDir(walletDir: string): string {
+  const walletJsonPath = path.join(walletDir, "wallet.json");
+  const walletDbPath = path.join(walletDir, "wallet.db");
+  if (!existsSync(walletJsonPath)) {
+    throw new Error(`wallet.json not found in wallet directory: ${walletDir}`);
+  }
+  let walletJson: unknown;
+  try {
+    walletJson = JSON.parse(readFileSync(walletJsonPath, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "invalid JSON";
+    throw new Error(`failed to parse wallet.json: ${message}`);
+  }
+  if (
+    typeof walletJson !== "object" ||
+    walletJson == null ||
+    typeof (walletJson as { descriptor?: unknown }).descriptor !== "string" ||
+    typeof (walletJson as { blockheight?: unknown }).blockheight !== "number" ||
+    typeof (walletJson as { label?: unknown }).label !== "string"
+  ) {
+    throw new Error("wallet.json must contain descriptor, blockheight, and label");
+  }
+  if (!existsSync(walletDbPath)) {
+    throw new Error(`wallet.db not found next to wallet.json: ${walletDir}`);
+  }
+  return walletDir;
 }
 
 function getRpcAuthToken(options: Options): string | null {
@@ -224,7 +259,7 @@ async function main() {
   }
 
   const nativeConfig = resolveNativeConfig(options);
-  const walletDir = resolveWalletDir(options);
+  const walletDir = validateWalletDir(resolveWalletDir(options));
   const outpoint = await resolveOutpoint(options, space);
   const parsed = decodeNativeJson(
     runNative(nativeConfig, ["sign-digest", walletDir, options.network, outpoint, digest]),

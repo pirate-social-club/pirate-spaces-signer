@@ -36,6 +36,11 @@ type RpcFullSpaceOut = {
   n: number;
 };
 
+type WalletLocation = {
+  walletDir: string;
+  walletJsonPath: string;
+};
+
 function usage(exitCode = 1): never {
   const out = exitCode === 0 ? console.log : console.error;
   out(`Usage:
@@ -47,7 +52,7 @@ Options:
   --space LABEL             Required. Top-level space label, with or without @
   --digest HEX              Required. 32-byte lowercase or 0x-prefixed hex digest
   --wallet NAME             Wallet label. Default: default
-  --wallet-dir PATH         Explicit wallet directory containing wallet.json and wallet.db
+  --wallet-dir PATH         Wallet directory, or a wallet JSON file beside wallet.db
   --spaces-data-dir PATH    Base spaced data dir; used to derive wallet dir as <dir>/wallets/<wallet>
   --rpc-url URL             spaced RPC URL. Default: $SPACED_RPC_URL or http://127.0.0.1:7225
   --rpc-auth-token TOKEN    Precomputed Basic auth token for spaced RPC
@@ -144,45 +149,57 @@ function normalizeDigest(value: string): string {
   return value.trim().replace(/^0x/i, "").toLowerCase();
 }
 
-function resolveWalletDir(options: Options): string {
+function resolveWalletLocation(options: Options): WalletLocation {
   if (options.walletDir) {
     const explicitWalletPath = path.resolve(options.walletDir);
     if (existsSync(explicitWalletPath) && statSync(explicitWalletPath).isFile()) {
-      if (path.basename(explicitWalletPath) !== "wallet.json") {
-        throw new Error("--wallet-dir must point to a Spaces wallet directory or wallet.json");
-      }
-      return path.dirname(explicitWalletPath);
+      return {
+        walletDir: path.dirname(explicitWalletPath),
+        walletJsonPath: explicitWalletPath,
+      };
     }
-    return explicitWalletPath;
+    return {
+      walletDir: explicitWalletPath,
+      walletJsonPath: path.join(explicitWalletPath, "wallet.json"),
+    };
   }
   if (!options.spacesDataDir) {
     throw new Error("missing wallet location: set --wallet-dir or --spaces-data-dir");
   }
   const directWalletDir = path.join(options.spacesDataDir, "wallets", options.wallet);
   if (existsSync(directWalletDir)) {
-    return directWalletDir;
+    return {
+      walletDir: directWalletDir,
+      walletJsonPath: path.join(directWalletDir, "wallet.json"),
+    };
   }
 
   const networkWalletDir = path.join(options.spacesDataDir, options.network, "wallets", options.wallet);
   if (existsSync(networkWalletDir)) {
-    return networkWalletDir;
+    return {
+      walletDir: networkWalletDir,
+      walletJsonPath: path.join(networkWalletDir, "wallet.json"),
+    };
   }
 
-  return directWalletDir;
+  return {
+    walletDir: directWalletDir,
+    walletJsonPath: path.join(directWalletDir, "wallet.json"),
+  };
 }
 
-function validateWalletDir(walletDir: string): string {
-  const walletJsonPath = path.join(walletDir, "wallet.json");
-  const walletDbPath = path.join(walletDir, "wallet.db");
-  if (!existsSync(walletJsonPath)) {
-    throw new Error(`wallet.json not found in wallet directory: ${walletDir}`);
+function validateWalletLocation(location: WalletLocation): WalletLocation {
+  const walletDbPath = path.join(location.walletDir, "wallet.db");
+  const walletJsonName = path.basename(location.walletJsonPath);
+  if (!existsSync(location.walletJsonPath)) {
+    throw new Error(`wallet JSON not found: ${location.walletJsonPath}`);
   }
   let walletJson: unknown;
   try {
-    walletJson = JSON.parse(readFileSync(walletJsonPath, "utf8"));
+    walletJson = JSON.parse(readFileSync(location.walletJsonPath, "utf8"));
   } catch (error) {
     const message = error instanceof Error ? error.message : "invalid JSON";
-    throw new Error(`failed to parse wallet.json: ${message}`);
+    throw new Error(`failed to parse ${walletJsonName}: ${message}`);
   }
   if (
     typeof walletJson !== "object" ||
@@ -191,12 +208,12 @@ function validateWalletDir(walletDir: string): string {
     typeof (walletJson as { blockheight?: unknown }).blockheight !== "number" ||
     typeof (walletJson as { label?: unknown }).label !== "string"
   ) {
-    throw new Error("wallet.json must contain descriptor, blockheight, and label");
+    throw new Error(`${walletJsonName} must contain descriptor, blockheight, and label`);
   }
   if (!existsSync(walletDbPath)) {
-    throw new Error(`wallet.db not found next to wallet.json: ${walletDir}`);
+    throw new Error(`wallet.db not found next to ${walletJsonName}: ${location.walletDir}`);
   }
-  return walletDir;
+  return location;
 }
 
 function getRpcAuthToken(options: Options): string | null {
@@ -259,10 +276,17 @@ async function main() {
   }
 
   const nativeConfig = resolveNativeConfig(options);
-  const walletDir = validateWalletDir(resolveWalletDir(options));
+  const walletLocation = validateWalletLocation(resolveWalletLocation(options));
   const outpoint = await resolveOutpoint(options, space);
   const parsed = decodeNativeJson(
-    runNative(nativeConfig, ["sign-digest", walletDir, options.network, outpoint, digest]),
+    runNative(nativeConfig, [
+      "sign-digest",
+      walletLocation.walletDir,
+      options.network,
+      outpoint,
+      digest,
+      walletLocation.walletJsonPath,
+    ]),
     "native signer failed",
   ) as Record<string, unknown>;
 
@@ -270,7 +294,8 @@ async function main() {
     ...parsed,
     space,
     wallet: options.wallet,
-    wallet_dir: walletDir,
+    wallet_dir: walletLocation.walletDir,
+    wallet_json: walletLocation.walletJsonPath,
   }));
 }
 

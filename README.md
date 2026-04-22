@@ -25,7 +25,7 @@ Copy the `signature` value from the JSON output and paste it into Pirate.
 --space LABEL             Required. Top-level space label, with or without @
 --digest HEX              Required. 32-byte lowercase or 0x-prefixed hex digest
 --wallet NAME             Wallet label. Default: default
---wallet-dir PATH         Explicit wallet directory containing wallet.json and wallet.db
+--wallet-dir PATH         Wallet directory, or a wallet JSON file beside wallet.db
 --spaces-data-dir PATH    Base spaced data dir; used to derive wallet dir as <dir>/wallets/<wallet>
 --rpc-url URL             spaced RPC URL. Default: $SPACED_RPC_URL or http://127.0.0.1:7225
 --rpc-auth-token TOKEN    Precomputed Basic auth token for spaced RPC

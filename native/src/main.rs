@@ -5,7 +5,7 @@ use serde_json::json;
 use spaces_protocol::{bitcoin::OutPoint, slabel::SLabel};
 use spaces_veritas::{Value, Veritas};
 use spaces_wallet::{
-    WalletConfig, WalletDescriptors, SpacesWallet,
+    SpacesWallet, WalletConfig, WalletDescriptors,
     bitcoin::{
         Network,
         secp256k1::{Message, Secp256k1},
@@ -37,7 +37,11 @@ fn output_json(value: serde_json::Value) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn inspect(root_label: &str, proof_base64: &str, anchor_hex: &str) -> Result<serde_json::Value, String> {
+fn inspect(
+    root_label: &str,
+    proof_base64: &str,
+    anchor_hex: &str,
+) -> Result<serde_json::Value, String> {
     let anchor = decode_hex::<32>(anchor_hex, "anchor")?;
     let proof = BASE64
         .decode(proof_base64)
@@ -57,14 +61,10 @@ fn inspect(root_label: &str, proof_base64: &str, anchor_hex: &str) -> Result<ser
     };
     SLabel::from_str(&canonical).map_err(|error| format!("invalid root label: {error}"))?;
 
-    let proved_outpoint = verified
-        .iter()
-        .find_map(|(_, value)| {
-            match value {
-                Value::Outpoint(outpoint) => Some(outpoint),
-                _ => None,
-            }
-        });
+    let proved_outpoint = verified.iter().find_map(|(_, value)| match value {
+        Value::Outpoint(outpoint) => Some(outpoint),
+        _ => None,
+    });
 
     let proof_root_hash = hex::encode(verified.root());
 
@@ -94,8 +94,12 @@ fn verify_schnorr(
     }))
 }
 
-fn load_wallet(wallet_dir: &Path, network_name: &str) -> Result<SpacesWallet, String> {
-    let wallet_json = fs::read_to_string(wallet_dir.join("wallet.json"))
+fn load_wallet(
+    wallet_dir: &Path,
+    wallet_json_path: &Path,
+    network_name: &str,
+) -> Result<SpacesWallet, String> {
+    let wallet_json = fs::read_to_string(wallet_json_path)
         .map_err(|error| format!("failed to read wallet export: {error}"))?;
     let export = serde_json::from_str::<WalletExport>(&wallet_json)
         .map_err(|error| format!("failed to parse wallet export: {error}"))?;
@@ -129,12 +133,21 @@ fn sign_digest(
     network_name: &str,
     outpoint_str: &str,
     digest_hex: &str,
+    wallet_json_path: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let outpoint = OutPoint::from_str(outpoint_str)
-        .map_err(|error| format!("invalid outpoint: {error}"))?;
+    let outpoint =
+        OutPoint::from_str(outpoint_str).map_err(|error| format!("invalid outpoint: {error}"))?;
     let digest = decode_hex::<32>(digest_hex, "digest")?;
     let wallet_path = Path::new(wallet_dir);
-    let mut wallet = load_wallet(wallet_path, network_name)?;
+    let default_wallet_json_path;
+    let wallet_json_path = match wallet_json_path {
+        Some(path) => Path::new(path),
+        None => {
+            default_wallet_json_path = wallet_path.join("wallet.json");
+            default_wallet_json_path.as_path()
+        }
+    };
+    let mut wallet = load_wallet(wallet_path, wallet_json_path, network_name)?;
     let utxo = wallet
         .get_utxo(outpoint)
         .ok_or_else(|| String::from("wallet does not control the requested root outpoint"))?;
@@ -204,7 +217,14 @@ fn main() -> ExitCode {
             let Some(digest_hex) = args.next() else {
                 return ExitCode::FAILURE;
             };
-            sign_digest(&wallet_dir, &network_name, &outpoint, &digest_hex)
+            let wallet_json_path = args.next();
+            sign_digest(
+                &wallet_dir,
+                &network_name,
+                &outpoint,
+                &digest_hex,
+                wallet_json_path.as_deref(),
+            )
         }
         _ => Err(format!("unknown command: {command}")),
     };

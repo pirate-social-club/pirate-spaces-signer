@@ -21,7 +21,6 @@ export function resolveNativeExecutionConfig(input: {
         "cargo",
         "run",
         "--quiet",
-        "--offline",
         "--locked",
         "--manifest-path",
         input.nativeManifestPath,

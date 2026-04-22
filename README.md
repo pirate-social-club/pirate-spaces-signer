@@ -15,6 +15,8 @@ SPACES_NATIVE_ALLOW_BUILD_FALLBACK=true bun scripts/sign-digest.ts \
   --network mainnet
 ```
 
+On first run, Cargo may download and build the native Spaces signing helper.
+
 Copy the `signature` value from the JSON output and paste it into Pirate.
 
 ## Options

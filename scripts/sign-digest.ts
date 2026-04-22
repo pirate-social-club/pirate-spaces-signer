@@ -36,8 +36,9 @@ type RpcFullSpaceOut = {
   n: number;
 };
 
-function usage(): never {
-  console.error(`Usage:
+function usage(exitCode = 1): never {
+  const out = exitCode === 0 ? console.log : console.error;
+  out(`Usage:
   bun scripts/sign-digest.ts --space @pirate --digest <hex> [options]
 
 Signs a Pirate Spaces verification digest with the current root key from a local Spaces wallet.
@@ -56,7 +57,7 @@ Options:
   --outpoint TXID:VOUT      Skip RPC owner lookup and sign for this outpoint directly
   -h, --help                Show this help text
 `);
-  process.exit(1);
+  process.exit(exitCode);
 }
 
 function parseArgs(argv: string[]): Options {
@@ -128,7 +129,7 @@ function parseArgs(argv: string[]): Options {
         break;
       case "-h":
       case "--help":
-        usage();
+        usage(0);
         break;
       default:
         console.error(`unknown argument: ${arg}`);
